@@ -33,29 +33,29 @@ app = FastAPI(
     version="1.0.0",
 )
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print(f"Using device: {device}")
 
-# BERT for text (Masked LM for perplexity-based quality)
-bert_tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
-bert_model = BertForMaskedLM.from_pretrained("bert-base-uncased").to(device)
-bert_model.eval()  # Inference mode
+device = torch.device("cpu")      
 
-# ResNet-50 for images (pre-trained ImageNet classifier)
-resnet = resnet50(pretrained=True).to(device)
-resnet.eval()
-resnet_transform = transforms.Compose(
-    [
-        transforms.Resize(256),
-        transforms.CenterCrop(224),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-    ]
-)
+
+distil_tokenizer = BertTokenizer.from_pretrained("distilbert-base-uncased")
+distil_model = BertForMaskedLM.from_pretrained("distilbert-base-uncased").to(device)
+distil_model.eval()
 
 
 sentence_model = SentenceTransformer('all-MiniLM-L6-v2').to(device)
-print("Sentence model loaded!")
+
+
+resnet = resnet18(pretrained=True).to(device)
+resnet.eval()
+resnet_transform = transforms.Compose([
+    transforms.Resize(256),
+    transforms.CenterCrop(224),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                         std=[0.229, 0.224, 0.225]),
+])
+
+
 
 class Issue(BaseModel):
     file: str
@@ -281,10 +281,11 @@ def score_text_data(texts: List[str], description: str = None) -> dict:
         return zero_scores()
 
     perplexities = []
-    for txt in texts[:5]:
-        enc = bert_tokenizer(txt, return_tensors="pt", truncation=True, max_length=512).to(device)
+    for txt in texts[:5]:                     # still limit for speed
+        enc = distil_tokenizer(txt, return_tensors="pt",
+                               truncation=True, max_length=512).to(device)
         with torch.no_grad():
-            out = bert_model(**enc, labels=enc["input_ids"])
+            out = distil_model(**enc, labels=enc["input_ids"])
             loss = out.loss
             perplexities.append(torch.exp(loss).item())
 
@@ -292,7 +293,7 @@ def score_text_data(texts: List[str], description: str = None) -> dict:
     quality = max(0, min(100, 100 - avg_perp * 2))
     completeness = 100 if len(texts) >= 5 else len(texts) * 20
     consistency = max(0, min(100, 100 - np.std(perplexities) * 10))
-    relevance = compute_relevance_score(description, texts)  # ← USES DESCRIPTION
+    relevance = compute_relevance_score(description, texts)
 
     return {
         "quality": int(quality),
@@ -301,18 +302,18 @@ def score_text_data(texts: List[str], description: str = None) -> dict:
         "relevance": relevance,
     }
 
+
 def score_image_data(images: List[bytes]) -> dict:
-    """ResNet-50 top-5 confidence."""
     if not images:
         return zero_scores()
 
     confidences = []
-    for img_bytes in images[:3]:               # limit for speed
+    for img_bytes in images[:3]:
         try:
             img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
             tensor = resnet_transform(img).unsqueeze(0).to(device)
             with torch.no_grad():
-                out = resnet(tensor)
+                out = resnet(tensor)                     # <-- ResNet-18
                 probs = torch.nn.functional.softmax(out[0], dim=0)
                 top5 = probs.topk(5).values.sum().item() / 5
                 confidences.append(top5)
@@ -324,13 +325,8 @@ def score_image_data(images: List[bytes]) -> dict:
     completeness = 100 if len(images) >= 3 else len(images) * 33
     consistency = max(0, min(100, 100 - np.std(confidences) * 50))
     relevance = quality
-
-    return {
-        "quality": quality,
-        "completeness": completeness,
-        "consistency": consistency,
-        "relevance": relevance,
-    }
+    return { "quality": quality, "completeness": completeness,
+             "consistency": consistency, "relevance": relevance }
 
 
 @app.post("/verify", response_model=VerifyResponse)
