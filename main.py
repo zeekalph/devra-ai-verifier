@@ -12,8 +12,9 @@ import torch
 import torchvision.models as models
 import torch
 import torchvision.transforms as transforms
-from torchvision.models import resnet50
+from torchvision.models import resnet18
 from transformers import BertTokenizer, BertForMaskedLM
+from transformers import DistilBertTokenizer, DistilBertForMaskedLM
 import zipfile
 import pandas as pd
 from io import BytesIO, StringIO
@@ -24,6 +25,7 @@ import pyarrow.parquet as pq
 import openpyxl
 import numpy as np
 from typing import List, Dict, Any
+import gc
 from sentence_transformers import SentenceTransformer, util
 
 
@@ -37,12 +39,13 @@ app = FastAPI(
 device = torch.device("cpu")      
 
 
-distil_tokenizer = BertTokenizer.from_pretrained("distilbert-base-uncased")
-distil_model = BertForMaskedLM.from_pretrained("distilbert-base-uncased").to(device)
+distil_tokenizer = DistilBertTokenizer.from_pretrained("distilbert-base-uncased")
+distil_model = DistilBertForMaskedLM.from_pretrained("distilbert-base-uncased").to(device)
 distil_model.eval()
-
+gc.collect()
 
 sentence_model = SentenceTransformer('all-MiniLM-L6-v2').to(device)
+gc.collect()
 
 
 resnet = resnet18(pretrained=True).to(device)
@@ -54,7 +57,7 @@ resnet_transform = transforms.Compose([
     transforms.Normalize(mean=[0.485, 0.456, 0.406],
                          std=[0.229, 0.224, 0.225]),
 ])
-
+gc.collect()
 
 
 class Issue(BaseModel):
