@@ -19,7 +19,11 @@ RUN pip install --no-cache-dir --upgrade pip \
         --index-url https://download.pytorch.org/whl/cpu
 
 RUN pip install --no-cache-dir uvicorn --target /usr/local/bin
+# Install streamlit globally (PATH + permissions fix)
+RUN pip install --no-cache-dir streamlit --target /usr/local/bin
 
+# Install rest of deps with wheels only
+RUN pip install --no-cache-dir --only-binary=all -r requirements.txt
 # Copy app code
 COPY . .
 
