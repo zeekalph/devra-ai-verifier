@@ -1,4 +1,4 @@
-# Dockerfile for AI Dataset Verifier – Force Wheel Installs (No Source Build)
+# Dockerfile for AI Dataset Verifier – Force Pandas Wheel + Torch CPU
 FROM python:3.12.11
 
 # Install minimal system deps
@@ -15,10 +15,13 @@ COPY requirements.txt .
 # Install Torch/Torchvision with CPU index (wheels only)
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir --only-binary=all \
-        torch==2.2.0+cpu torchvision==0.17.0+cpu \
+        torch==2.8.0+cpu torchvision==0.23.0+cpu \
         --index-url https://download.pytorch.org/whl/cpu
 
-# Install rest of deps with wheels only (no source build)
+# Install pandas with wheel force (no source build)
+RUN pip install --no-cache-dir --only-binary=all pandas==1.5.3
+
+# Install rest of deps with wheels only
 RUN pip install --no-cache-dir --only-binary=all -r requirements.txt
 
 # Copy app code
