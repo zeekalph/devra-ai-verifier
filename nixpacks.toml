@@ -1,9 +1,13 @@
-# nixpacks.toml – Force Python 3.12 for pandas compatibility
+# nixpacks.toml – Force Python 3.11 + Wheel Installs (No Source Builds)
 [phases.setup]
-nixPkgs = ['python312']  # Use Python 3.12
+nixPkgs = ['python311']  # Python 3.11 for pandas wheels
 
 [phases.build]
-cmds = ['pip install --no-cache-dir torch==2.1.0+cpu torchvision==0.16.0+cpu --index-url https://download.pytorch.org/whl/cpu', 'pip install --no-cache-dir -r requirements.txt']
+cmds = [
+  'pip install --no-cache-dir --upgrade pip',
+  'pip install --no-cache-dir --only-binary=all torch==2.8.0+cpu torchvision==0.23.0+cpu --index-url https://download.pytorch.org/whl/cpu',
+  'pip install --no-cache-dir --only-binary=all -r requirements.txt'
+]
 
 [start]
-cmd = "uvicorn main:app --host 0.0.0.0 --port $PORT"
+cmd = "streamlit run app.py --server.port $PORT --server.address 0.0.0.0"
