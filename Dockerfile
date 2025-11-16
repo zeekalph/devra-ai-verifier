@@ -15,7 +15,7 @@ COPY requirements.txt .
 # Install Torch/Torchvision with CPU index (wheels only)
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir --only-binary=all \
-        torch==2.1.0+cpu torchvision==0.16.0+cpu \
+        torch==2.2.0+cpu torchvision==0.17.0+cpu \
         --index-url https://download.pytorch.org/whl/cpu
 
 # Install rest of deps with wheels only (no source build)
