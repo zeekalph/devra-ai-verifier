@@ -23,7 +23,7 @@ RUN pip install --no-cache-dir uvicorn --target /usr/local/bin
 RUN pip install --no-cache-dir streamlit --target /usr/local/bin
 
 # Install rest of deps with wheels only
-RUN pip install --no-cache-dir --only-binary=all -r requirements.txt
+RUN pip install -r requirements.txt
 # Copy app code
 COPY . .
 
