@@ -22,8 +22,6 @@ RUN pip install --no-cache-dir uvicorn --target /usr/local/bin
 # Install streamlit globally (PATH + permissions fix)
 RUN pip install --no-cache-dir streamlit --target /usr/local/bin
 
-# Install rest of deps with wheels only
-RUN pip install -r requirements.txt
 # Copy app code
 COPY . .
 
