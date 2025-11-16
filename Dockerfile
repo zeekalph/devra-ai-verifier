@@ -18,11 +18,13 @@ RUN pip install --no-cache-dir --upgrade pip \
         torch==2.8.0+cpu torchvision==0.23.0+cpu \
         --index-url https://download.pytorch.org/whl/cpu
 
+RUN pip install --no-cache-dir uvicorn --target /usr/local/bin
+
 # Copy app code
 COPY . .
 
 # Expose Streamlit port
 EXPOSE 7860
 
-# Run Streamlit
+# Run Streamlit (UI + FastAPI in background)
 CMD ["streamlit", "run", "app.py", "--server.port", "7860", "--server.address", "0.0.0.0"]
