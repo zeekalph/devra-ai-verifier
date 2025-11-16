@@ -18,12 +18,6 @@ RUN pip install --no-cache-dir --upgrade pip \
         torch==2.8.0+cpu torchvision==0.23.0+cpu \
         --index-url https://download.pytorch.org/whl/cpu
 
-# Install pandas with wheel force (no source build)
-RUN pip install --no-cache-dir --only-binary=all pandas==1.5.3
-
-# Install rest of deps with wheels only
-RUN pip install --no-cache-dir --only-binary=all -r requirements.txt
-
 # Copy app code
 COPY . .
 
