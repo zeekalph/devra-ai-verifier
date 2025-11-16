@@ -27,6 +27,67 @@ import numpy as np
 from typing import List, Dict, Any
 import gc
 from sentence_transformers import SentenceTransformer, util
+import threading  
+from functools import lru_cache 
+
+_distil_tokenizer = None
+_distil_model = None
+_sentence_model = None
+_resnet = None
+_resnet_transform = None
+_load_lock = threading.Lock()  
+
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
+os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
+
+def get_distil_tokenizer():
+    global _distil_tokenizer
+    if _distil_tokenizer is None:
+        with _load_lock:
+            if _distil_tokenizer is None:  # Double-check for race
+                print("Lazy-loading DistilBERT tokenizer...")
+                _distil_tokenizer = DistilBertTokenizer.from_pretrained("distilbert-base-uncased")
+                gc.collect()  # Free temp RAM
+    return _distil_tokenizer
+
+def get_distil_model():
+    global _distil_model
+    if _distil_model is None:
+        with _load_lock:
+            if _distil_model is None:
+                print("Lazy-loading DistilBERT model...")
+                _distil_model = DistilBertForMaskedLM.from_pretrained("distilbert-base-uncased").to(device)
+                _distil_model.eval()
+                gc.collect()
+    return _distil_model
+
+def get_sentence_model():
+    global _sentence_model
+    if _sentence_model is None:
+        with _load_lock:
+            if _sentence_model is None:
+                print("Lazy-loading SentenceTransformer...")
+                _sentence_model = SentenceTransformer('all-MiniLM-L6-v2').to(device)
+                gc.collect()
+    return _sentence_model
+
+def get_resnet():
+    global _resnet, _resnet_transform
+    if _resnet is None:
+        with _load_lock:
+            if _resnet is None:
+                print("Lazy-loading ResNet-18...")
+                _resnet = resnet18(pretrained=True).to(device)
+                _resnet.eval()
+                _resnet_transform = transforms.Compose([
+                    transforms.Resize(256),
+                    transforms.CenterCrop(224),
+                    transforms.ToTensor(),
+                    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+                ])
+                gc.collect()
+    return _resnet, _resnet_transform
 
 
 app = FastAPI(
@@ -38,26 +99,6 @@ app = FastAPI(
 
 device = torch.device("cpu")      
 
-
-distil_tokenizer = DistilBertTokenizer.from_pretrained("distilbert-base-uncased")
-distil_model = DistilBertForMaskedLM.from_pretrained("distilbert-base-uncased").to(device)
-distil_model.eval()
-gc.collect()
-
-sentence_model = SentenceTransformer('all-MiniLM-L6-v2').to(device)
-gc.collect()
-
-
-resnet = resnet18(pretrained=True).to(device)
-resnet.eval()
-resnet_transform = transforms.Compose([
-    transforms.Resize(256),
-    transforms.CenterCrop(224),
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                         std=[0.229, 0.224, 0.225]),
-])
-gc.collect()
 
 
 class Issue(BaseModel):
@@ -118,16 +159,16 @@ def process_file(file_name: str, file_bytes: bytes, file_type: str, text_data: l
 
 def compute_relevance_score(description: str, texts: List[str]) -> int:
     if not description or not texts:
-        return 50  # neutral
-
-    desc_emb = sentence_model.encode(description, convert_to_tensor=True)
-    content_embs = sentence_model.encode(texts[:10], convert_to_tensor=True)  # limit
+        return 50
+    model = get_sentence_model()  
+    desc_emb = model.encode(description, convert_to_tensor=True)
+    content_embs = model.encode(texts[:5], convert_to_tensor=True)  
     similarities = util.cos_sim(desc_emb, content_embs)[0]
     avg_sim = similarities.mean().item()
-    # Map cosine similarity [-1,1] → [0,100]
     score = int((avg_sim + 1) * 50)
+    del desc_emb, content_embs, similarities 
+    gc.collect()
     return max(0, min(100, score))
-
 
 def extract_text_from_dict(data, max_depth=3, current_depth=0):
     """Recursively extract strings from nested JSON."""
@@ -283,15 +324,18 @@ def score_text_data(texts: List[str], description: str = None) -> dict:
     if not texts:
         return zero_scores()
 
+    tokenizer = get_distil_tokenizer() 
+    model = get_distil_model()         
+
     perplexities = []
-    for txt in texts[:5]:                     # still limit for speed
-        enc = distil_tokenizer(txt, return_tensors="pt",
-                               truncation=True, max_length=512).to(device)
+    for txt in texts[:5]:  
+        enc = tokenizer(txt, return_tensors="pt", truncation=True, max_length=512).to(device)
         with torch.no_grad():
-            out = distil_model(**enc, labels=enc["input_ids"])
+            out = model(**enc, labels=enc["input_ids"])
             loss = out.loss
             perplexities.append(torch.exp(loss).item())
-
+        del enc  
+        gc.collect()
     avg_perp = np.mean(perplexities) if perplexities else float("inf")
     quality = max(0, min(100, 100 - avg_perp * 2))
     completeness = 100 if len(texts) >= 5 else len(texts) * 20
@@ -306,23 +350,27 @@ def score_text_data(texts: List[str], description: str = None) -> dict:
     }
 
 
+
 def score_image_data(images: List[bytes]) -> dict:
     if not images:
         return zero_scores()
 
+    model, transform = get_resnet()  
+
     confidences = []
-    for img_bytes in images[:3]:
+    for img_bytes in images[:3]:  
         try:
             img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
-            tensor = resnet_transform(img).unsqueeze(0).to(device)
+            tensor = transform(img).unsqueeze(0).to(device)
             with torch.no_grad():
-                out = resnet(tensor)                     # <-- ResNet-18
+                out = model(tensor)
                 probs = torch.nn.functional.softmax(out[0], dim=0)
                 top5 = probs.topk(5).values.sum().item() / 5
                 confidences.append(top5)
+            del tensor, out, probs  # Clean up
         except Exception:
             continue
-
+        gc.collect()
     avg_conf = np.mean(confidences) if confidences else 0.0
     quality = int(avg_conf * 100)
     completeness = 100 if len(images) >= 3 else len(images) * 33
@@ -331,16 +379,18 @@ def score_image_data(images: List[bytes]) -> dict:
     return { "quality": quality, "completeness": completeness,
              "consistency": consistency, "relevance": relevance }
 
-
 @app.post("/verify", response_model=VerifyResponse)
 async def verify_dataset(
     file: UploadFile = File(...),
     name: str = Form(None),
-    description: str = Form(None), 
+    description: str = Form(None),
 ):
     raw_bytes = await file.read()
     if not raw_bytes:
         raise HTTPException(status_code=400, detail="Empty file")
+
+    # Trigger lazy loads here – first call does the work
+    print("First /verify – triggering model loads if needed...")
 
     scores, status, issues = ai_verify_data(raw_bytes, description=description)
 
