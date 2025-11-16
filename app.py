@@ -1,19 +1,27 @@
 import streamlit as st
 import requests
-import io
+import subprocess
+import threading
+import time
+from io import BytesIO
 import zipfile
 import pandas as pd
-from io import BytesIO
 
 st.set_page_config(page_title="AI Dataset Verifier", layout="centered")
 st.title("AI Dataset Verifier")
 st.caption("Upload CSV/ZIP + description → Get quality scores")
 
-# FastAPI proxy
-def verify_dataset(file, description):
-    if not file:
-        return "No file uploaded"
-    files = {"file": file}
+# Start FastAPI in background
+def run_fastapi():
+    time.sleep(2)  # Wait for deps
+    subprocess.Popen(["uvicorn", "main:app", "--host", "127.0.0.1", "--port", "8000"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+threading.Thread(target=run_fastapi, daemon=True).start()
+
+# UI
+def verify_dataset(uploaded_file, description):
+    if not uploaded_file:
+        return "No file uploaded", None
+    files = {"file": uploaded_file}
     data = {"description": description or ""}
     try:
         r = requests.post("http://127.0.0.1:8000/verify", files=files, data=data, timeout=30)
@@ -36,11 +44,3 @@ description = st.text_input("Description", placeholder="e.g. advertising and sal
 
 if st.button("Verify") and uploaded_file:
     verify_dataset(uploaded_file, description)
-
-# Start FastAPI in background
-import subprocess
-import threading
-def run_fastapi():
-    time.sleep(2)
-    subprocess.Popen(["uvicorn", "main:app", "--host", "127.0.0.1", "--port", "8000"])
-threading.Thread(target=run_fastapi, daemon=True).start()
