@@ -14,7 +14,7 @@ import torch
 import torchvision.transforms as transforms
 from torchvision.models import resnet18
 from transformers import BertTokenizer, BertForMaskedLM
-from transformers import DistilBertTokenizer, DistilBertForMaskedLM
+from transformers import MobileBertTokenizer, MobileBertForMaskedLM
 import zipfile
 import pandas as pd
 from io import BytesIO, StringIO
@@ -47,7 +47,7 @@ def get_distil_tokenizer():
         with _load_lock:
             if _distil_tokenizer is None:  # Double-check for race
                 print("Lazy-loading DistilBERT tokenizer...")
-                _distil_tokenizer = DistilBertTokenizer.from_pretrained("distilbert-base-uncased")
+                _distil_tokenizer = MobileBertTokenizer.from_pretrained("google/mobilebert-uncased")
                 gc.collect()  # Free temp RAM
     return _distil_tokenizer
 
@@ -57,7 +57,7 @@ def get_distil_model():
         with _load_lock:
             if _distil_model is None:
                 print("Lazy-loading DistilBERT model...")
-                _distil_model = DistilBertForMaskedLM.from_pretrained("distilbert-base-uncased").to(device)
+                _distil_model = MobileBertForMaskedLM.from_pretrained("google/mobilebert-uncased").to(device)
                 _distil_model.eval()
                 gc.collect()
     return _distil_model
