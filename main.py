@@ -3,7 +3,6 @@ from pydantic import BaseModel
 from typing import List, Dict
 import onnxruntime as ort  # ONNXRuntime for inference
 from transformers import AutoTokenizer
-from sentence_transformers import SentenceTransformer, util
 from PIL import Image
 import io
 import zipfile
@@ -11,30 +10,22 @@ import pandas as pd
 import numpy as np
 import gc
 import os
+import torch.nn.functional as F
 
 app = FastAPI(title="AI Dataset Verifier")
 
-# ONNX providers (CPU only for Render)
-providers = ['CPUExecutionProvider']
+providers = ['CPUExecutionProvider']  # CPU for Render
 
 # Lazy load ONNX sessions
 _bert_session = None
-_minilm_session = None
 _resnet_session = None
 _tokenizer = None
-_sentence_model = None
 
 def get_bert_session():
     global _bert_session
     if _bert_session is None:
         _bert_session = ort.InferenceSession("bert_tiny.onnx", providers=providers)
     return _bert_session
-
-def get_minilm_session():
-    global _minilm_session
-    if _minilm_session is None:
-        _minilm_session = ort.InferenceSession("minilm.onnx", providers=providers)
-    return _minilm_session
 
 def get_resnet_session():
     global _resnet_session
@@ -48,11 +39,11 @@ def get_tokenizer():
         _tokenizer = AutoTokenizer.from_pretrained("prajjwal1/bert-tiny")
     return _tokenizer
 
-def get_sentence_model():
-    global _sentence_model
-    if _sentence_model is None:
-        _sentence_model = SentenceTransformer('all-MiniLM-L6-v2')  # Keep for embedding (ONNX for inference only)
-    return _sentence_model
+_transform = transforms.Compose([
+    transforms.Resize(224),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+])
 
 class Response(BaseModel):
     scores: Dict[str, int]
@@ -74,11 +65,14 @@ def score_text(texts: List[str], desc: str = None):
     quality = max(0, min(100, 100 - np.mean(perps) * 2))
     relevance = 50
     if desc and texts:
-        sm = get_sentence_model()
-        e1 = sm.encode(desc, convert_to_tensor=True)
-        e2 = sm.encode(texts[:3], convert_to_tensor=True)
-        sim = util.cos_sim(e1, e2).mean().item()
+        # Bert-Tiny proxy for relevance (mean pooling)
+        enc1 = tokenizer(desc, return_tensors="pt")["input_ids"].numpy()
+        outputs1 = session.run(None, {"input_ids": enc1})
+        emb1 = outputs1[0].mean(axis=1)
+        emb2 = np.mean([session.run(None, {"input_ids": tokenizer(t, return_tensors="pt")["input_ids"].numpy()})[0].mean(axis=1) for t in texts[:3]], axis=0)
+        sim = np.dot(emb1, emb2) / (np.linalg.norm(emb1) * np.linalg.norm(emb2))
         relevance = int((sim + 1) * 50)
+        gc.collect()
     gc.collect()
     return {
         "quality": int(quality),
@@ -94,9 +88,9 @@ def score_image(images: List[bytes]):
     confidences = []
     for img_bytes in images[:2]:
         img = Image.open(io.BytesIO(img_bytes)).convert("RGB").resize((224, 224))
-        tensor = transforms.ToTensor()(img).unsqueeze(0).numpy()
+        tensor = _transform(img).unsqueeze(0).numpy()
         outputs = session.run(None, {"input": tensor})
-        probs = torch.nn.functional.softmax(torch.tensor(outputs[0]), dim=1).numpy()
+        probs = F.softmax(torch.tensor(outputs[0]), dim=1).numpy()
         top5 = np.mean(np.sort(probs[0])[-5:])
         confidences.append(top5)
     quality = int(np.mean(confidences) * 100)
