@@ -13,7 +13,7 @@ import pandas as pd
 import numpy as np
 import gc
 import os
-import onyx  # ← NEW: Onyx for RAM optimization
+from memory_profiler import profile  # ← NEW: memory-profiler for RAM tracking
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
@@ -28,29 +28,32 @@ _sentence_model = None
 _resnet = None
 _transform = None
 
-@onyx.wrap  # ← NEW: Onyx decorator – pools tokenizer objects, reduces RAM by 20-30%
+@profile  # ← NEW: Tracks memory per line, identifies leaks (like Onyx pooling)
 def get_tokenizer():
     global _tokenizer
     if _tokenizer is None:
         _tokenizer = AutoTokenizer.from_pretrained("prajjwal1/bert-tiny")  # 4.4M params, ~29 MiB
+        gc.collect()  # Aggressive cleanup
     return _tokenizer
 
-@onyx.wrap  # ← NEW: Onyx for model – optimizes tensor allocations
+@profile  # ← NEW: Monitors tensor allocations
 def get_model():
     global _model
     if _model is None:
         _model = AutoModelForMaskedLM.from_pretrained("prajjwal1/bert-tiny").to(device)
         _model.eval()
+        gc.collect()
     return _model
 
-@onyx.wrap  # ← NEW: Onyx for embeddings – GC tuning for low RAM
+@profile  # ← NEW: Tracks embedding memory
 def get_sentence_model():
     global _sentence_model
     if _sentence_model is None:
         _sentence_model = SentenceTransformer('all-MiniLM-L6-v2')  # 22M params, ~80 MiB
+        gc.collect()
     return _sentence_model
 
-@onyx.wrap  # ← NEW: Onyx for ResNet – reduces image tensor memory
+@profile  # ← NEW: Monitors image tensor memory
 def get_resnet():
     global _resnet, _transform
     if _resnet is None:
@@ -61,6 +64,7 @@ def get_resnet():
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         ])
+        gc.collect()
     return _resnet, _transform
 
 class Response(BaseModel):
@@ -68,6 +72,7 @@ class Response(BaseModel):
     status: str
     issues: List[str] = []
 
+@profile  # ← NEW: Tracks scoring loop memory
 def score_text(texts: List[str], desc: str = None):
     if not texts:
         return {"quality": 0, "completeness": 0, "consistency": 0, "relevance": 50}
@@ -79,7 +84,7 @@ def score_text(texts: List[str], desc: str = None):
         with torch.no_grad():
             loss = model(**enc, labels=enc["input_ids"]).loss
             perps.append(torch.exp(loss).item())
-        del enc; gc.collect()
+        del enc; gc.collect()  # Cleanup after each iteration
     quality = max(0, min(100, 100 - np.mean(perps) * 2))
     relevance = 50
     if desc and texts:
@@ -88,6 +93,8 @@ def score_text(texts: List[str], desc: str = None):
         e2 = sm.encode(texts[:3], convert_to_tensor=True)
         sim = util.cos_sim(e1, e2).mean().item()
         relevance = int((sim + 1) * 50)
+        del e1, e2; gc.collect()
+    gc.collect()  # Final cleanup
     return {
         "quality": int(quality),
         "completeness": 100 if len(texts) >= 2 else 50,
@@ -116,6 +123,7 @@ async def verify(file: UploadFile = File(...), description: str = Form(None)):
             pass
     scores = score_text(texts, description)
     status = "VERIFIED" if scores["quality"] >= 60 else "FAILED"
+    gc.collect()  # Post-request cleanup
     return Response(scores=scores, status=status, issues=[])
 
 @app.get("/")
