@@ -11,6 +11,7 @@ import numpy as np
 import gc
 import os
 import torch.nn.functional as F
+from torchvision import transforms  # ← NEW: Missing import for _transform
 
 app = FastAPI(title="AI Dataset Verifier")
 
@@ -39,7 +40,7 @@ def get_tokenizer():
         _tokenizer = AutoTokenizer.from_pretrained("prajjwal1/bert-tiny")
     return _tokenizer
 
-_transform = transforms.Compose([
+_transform = transforms.Compose([  # Now defined
     transforms.Resize(224),
     transforms.ToTensor(),
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
@@ -88,7 +89,7 @@ def score_image(images: List[bytes]):
     confidences = []
     for img_bytes in images[:2]:
         img = Image.open(io.BytesIO(img_bytes)).convert("RGB").resize((224, 224))
-        tensor = _transform(img).unsqueeze(0).numpy()
+        tensor = _transform(img).unsqueeze(0).numpy()  # Now _transform defined
         outputs = session.run(None, {"input": tensor})
         probs = F.softmax(torch.tensor(outputs[0]), dim=1).numpy()
         top5 = np.mean(np.sort(probs[0])[-5:])
