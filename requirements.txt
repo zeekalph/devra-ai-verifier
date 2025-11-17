@@ -16,3 +16,5 @@ openpyxl==3.1.2
 sentence-transformers==2.2.2
 gunicorn==21.2.0
 memory-profiler==0.61.0
+onnx
+onnxruntime
