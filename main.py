@@ -11,7 +11,11 @@ import numpy as np
 import gc
 import os
 import torch.nn.functional as F
+<<<<<<< Updated upstream
 from torchvision import transforms  # ← NEW: Missing import for _transform
+=======
+from torchvision import transforms
+>>>>>>> Stashed changes
 
 app = FastAPI(title="AI Dataset Verifier")
 
@@ -58,7 +62,8 @@ def score_text(texts: List[str], desc: str = None):
     session = get_bert_session()
     perps = []
     for t in texts[:2]:
-        enc = tokenizer(t, return_tensors="pt")["input_ids"].numpy()
+        # Pad to max_length=512 for ONNX static/dynamic match
+        enc = tokenizer(t, return_tensors="pt", max_length=512, truncation=True, padding=True)["input_ids"].numpy()
         outputs = session.run(None, {"input_ids": enc})
         logits = outputs[0]
         loss = np.log(np.sum(np.exp(logits))) - np.log(logits.shape[-1])  # Approx perplexity
@@ -67,10 +72,10 @@ def score_text(texts: List[str], desc: str = None):
     relevance = 50
     if desc and texts:
         # Bert-Tiny proxy for relevance (mean pooling)
-        enc1 = tokenizer(desc, return_tensors="pt")["input_ids"].numpy()
+        enc1 = tokenizer(desc, return_tensors="pt", max_length=512, truncation=True, padding=True)["input_ids"].numpy()
         outputs1 = session.run(None, {"input_ids": enc1})
         emb1 = outputs1[0].mean(axis=1)
-        emb2 = np.mean([session.run(None, {"input_ids": tokenizer(t, return_tensors="pt")["input_ids"].numpy()})[0].mean(axis=1) for t in texts[:3]], axis=0)
+        emb2 = np.mean([session.run(None, {"input_ids": tokenizer(t, return_tensors="pt", max_length=512, truncation=True, padding=True)["input_ids"].numpy()})[0].mean(axis=1) for t in texts[:3]], axis=0)
         sim = np.dot(emb1, emb2) / (np.linalg.norm(emb1) * np.linalg.norm(emb2))
         relevance = int((sim + 1) * 50)
         gc.collect()
