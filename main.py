@@ -11,11 +11,7 @@ import numpy as np
 import gc
 import os
 import torch.nn.functional as F
-<<<<<<< Updated upstream
-from torchvision import transforms  # ← NEW: Missing import for _transform
-=======
-from torchvision import transforms
->>>>>>> Stashed changes
+from torchvision import transforms  
 
 app = FastAPI(title="AI Dataset Verifier")
 
