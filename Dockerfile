@@ -21,8 +21,8 @@ RUN pip install --no-cache-dir --upgrade pip \
 RUN pip install --no-cache-dir uvicorn --target /usr/local/bin
 # Install streamlit globally (PATH + permissions fix)
 RUN pip install --no-cache-dir streamlit --target /usr/local/bin && \
-    chmod +x /usr/local/bin/streamlit
-
+    
+RUN chmod +x main.py
     
 # Copy app code
 COPY . .
