@@ -1,5 +1,5 @@
-# Dockerfile for AI Dataset Verifier – Force Pandas Wheel + Torch CPU
-FROM python:3.12.11
+# Dockerfile for AI Dataset Verifier – Shell-Wrapped CMD (Permission Fix)
+FROM python:3.12-slim  # Stable 3.12 base
 
 # Install minimal system deps
 RUN apt-get update && apt-get install -y \
@@ -18,17 +18,14 @@ RUN pip install --no-cache-dir --upgrade pip \
         torch==2.8.0+cpu torchvision==0.23.0+cpu \
         --index-url https://download.pytorch.org/whl/cpu
 
-RUN pip install --no-cache-dir uvicorn --target /usr/local/bin
-# Install streamlit globally (PATH + permissions fix)
-RUN pip install --no-cache-dir streamlit --target /usr/local/bin
-    
+# Install rest of deps with wheels only
+RUN pip install --no-cache-dir --only-binary=all -r requirements.txt
+
 # Copy app code
 COPY . .
-
-RUN chmod +x main.py
 
 # Expose Streamlit port
 EXPOSE 7860
 
-# Run Streamlit (UI + FastAPI in background)
-CMD ["python", "-m", "streamlit", "run", "app.py", "--server.port", "7860", "--server.address", "0.0.0.0"]
+# Run Streamlit via shell-wrapped module (bypasses permission)
+CMD ["sh", "-c", "python -m streamlit run app.py --server.port 7860 --server.address 0.0.0.0"]
