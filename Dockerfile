@@ -22,10 +22,10 @@ RUN pip install --no-cache-dir uvicorn --target /usr/local/bin
 # Install streamlit globally (PATH + permissions fix)
 RUN pip install --no-cache-dir streamlit --target /usr/local/bin
     
-RUN chmod +x main.py
-    
 # Copy app code
 COPY . .
+
+RUN chmod +x main.py
 
 # Expose Streamlit port
 EXPOSE 7860
