@@ -1,5 +1,5 @@
 # Dockerfile for AI Dataset Verifier – Shell-Wrapped CMD (Permission Fix)
-FROM python:3.12-slim  # Stable 3.12 base
+FROM python:3.12.11
 
 # Install minimal system deps
 RUN apt-get update && apt-get install -y \
