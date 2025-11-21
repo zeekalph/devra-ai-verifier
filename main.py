@@ -15,7 +15,7 @@ from torchvision import transforms
 
 app = FastAPI(title="AI Dataset Verifier")
 
-providers = ['CPUExecutionProvider']  # CPU for Render
+providers = ['CPUExecutionProvider']  
 
 # Lazy load ONNX sessions
 _bert_session = None
