@@ -1,1 +1,1 @@
-web: sh -c "uvicorn main:app --host 0.0.0.0 --port 7860 --log-level info"
+web: sh -c "streamlit run app.py --server.port=$PORT --server.address=0.0.0.0"
