@@ -10,11 +10,20 @@ st.caption("Upload CSV/ZIP + description → Get quality scores")
 import subprocess
 import threading
 import time
+import logging
 def run_fastapi():
-    time.sleep(2)
-    subprocess.Popen(["uvicorn", "main:app", "--host", "127.0.0.1", "--port", "8000"])
-threading.Thread(target=run_fastapi, daemon=True).start()
+    time.sleep(2)  
+    try:
+        proc = subprocess.Popen(
+            ["uvicorn", "main:app", "--host", "127.0.0.1", "--port", "8000"],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        )
+        logger.info("FastAPI started on http://127.0.0.1:8000")
+        proc.wait()  # Keep thread alive
+    except Exception as e:
+        logger.error(f"Failed to start FastAPI: {e}")
 
+threading.Thread(target=run_fastapi, daemon=True).start()
 # UI
 uploaded_file = st.file_uploader("Upload Dataset (CSV/ZIP)", type=["csv", "zip", "txt"])
 description = st.text_input("Description", placeholder="e.g. advertising and sales dataset")
