@@ -1,12 +1,13 @@
-# nixpacks.toml – Force Python 3.11 + Wheel Installs (No Source Builds)
 [phases.setup]
-nixPkgs = ['python311']  # Python 3.11 for pandas wheels
+nixPkgs = ['python311', 'gcc']  # Minimal for wheels
 
 [phases.build]
 cmds = [
   'pip install --no-cache-dir --upgrade pip',
   'pip install --no-cache-dir --only-binary=all torch==2.8.0+cpu torchvision==0.23.0+cpu --index-url https://download.pytorch.org/whl/cpu',
-  'pip install --no-cache-dir --only-binary=all -r requirements.txt'
+  'pip install --no-cache-dir --only-binary=all -r requirements.txt',
+  'pip cache purge',
+  'rm -rf ~/.cache/pip'  # Extra cache nuke
 ]
 
 [start]
